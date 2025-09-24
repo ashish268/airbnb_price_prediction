@@ -1,284 +1,220 @@
-import numpy as np
+
+import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.image as mpimg
-
-
-mydata = pd.read_csv('F:/AB_NYC_2019.csv')
-
-mydata.head()
-
-mydata.dtypes
-
-mydata["last_review"] = pd.to_datetime(mydata["last_review"])
-mydata.dtypes
-
-mydata.isnull().sum()
-
-mydata['reviews_per_month'].fillna(mydata['reviews_per_month'].mean(),inplace=True)
-mydata.drop(columns=['host_name', 'last_review'], axis=1, inplace=True)
-mydata.isnull().sum()
-
-import seaborn as sns
-import matplotlib.pyplot as plt
 import numpy as np
-
-# Filter only numeric columns for correlation
-numeric_cols = mydata.select_dtypes(include=['float64', 'int64']).columns
-numeric_data = mydata[numeric_cols]
-
-# Calculate correlation matrix with only numeric data
-corr_1 = numeric_data.corr()
-
-# Create the heatmap
-fig, ax = plt.subplots(figsize=(8, 8))
-dropSelf = np.zeros_like(corr_1)
-dropSelf[np.triu_indices_from(dropSelf)] = True
-sns.heatmap(corr_1, linewidths=.5, annot=True, fmt=".2f", mask=dropSelf)
-plt.show()
-
-plt.figure(figsize=(10,10))
-ax = sns.violinplot(data=mydata, x="neighbourhood_group", y="availability_365")
-
-plt.figure(figsize=(10,10))
-sns.barplot(data=mydata, x='neighbourhood_group', y='price')
-
-plt.figure(figsize=(10,6))
-# Use x and y parameters instead of positional arguments
-# This tells seaborn which columns to use for each axis
-sns.scatterplot(x='longitude', y='latitude', hue='neighbourhood_group', data=mydata)
-plt.ioff()
-
-def categorise(hotel_price):
-    if hotel_price<=75:
-        return 'Low'
-    elif hotel_price >75 and hotel_price<=500:
-        return 'Medium'
-    else:
-        return 'High'
-mydata['price'].apply(categorise).value_counts().plot(kind='bar');
-
-#word cloud
-
-# First, install the wordcloud package
-
-# Then import the required libraries
-import wordcloud
-from wordcloud import WordCloud, ImageColorGenerator
-import matplotlib.pyplot as plt  # Added matplotlib import which was missing
-
-# Create the text from your data
-text = " ".join(str(each) for each in mydata.name)
-
-# Create and generate a word cloud image:
-wordcloud = WordCloud(max_words=200, background_color="white").generate(text)
-
-# Only need one figure definition - removed the duplicate
-plt.figure(figsize=(15,10))
-
-# Display the generated image:
-plt.imshow(wordcloud, interpolation='bilinear')
-plt.axis("off")
-plt.show()
-
-plt.figure(figsize=(8,8))
-mydata['number_of_reviews'].plot(kind='hist')
-plt.xlabel("Price")
-plt.ioff()
-plt.show()
-
-mydata['name'].isnull().sum()
-
-mydata['name'].fillna('', inplace=True)
-mydata['name'].isnull().sum()
-
-import re
-def remove_punctuation_digits_specialchar(line):
-    return re.sub('[^A-Za-z]+', ' ', line).lower()
-
-mydata['clean_name'] = mydata['name'].apply(remove_punctuation_digits_specialchar)
-# Let's compare raw and cleaned texts.
-mydata[['name', 'clean_name']].head()
-
+import joblib
+import os
+import json
 import nltk
-from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize
-import pandas as pd
 
-# Download NLTK resources
-nltk.download('punkt')
-nltk.download('stopwords')
+# Ensure NLTK packages (safe small download at runtime)
+try:
+    nltk.data.find("tokenizers/punkt")
+except LookupError:
+    nltk.download("punkt")
 
-# Load data (replace with your actual file)
-mydata = pd.read_csv('F:/AB_NYC_2019.csv')
+st.set_page_config(page_title="Airbnb Price Predictor", layout="wide")
 
-# Prepare stopwords
-stop_words = set(stopwords.words('english'))
+st.title("Airbnb Price Prediction — Streamlit App")
+st.write(
+    """
+This app predicts Airbnb listing prices given features. 
+It is intentionally flexible: you can either upload your trained `model.pkl` (and optional `preprocessor.pkl`) **or** upload a CSV for batch predictions.
+If you don't have model files, you can still enter a single example via JSON input and the app will attempt to predict if a compatible model is loaded.
+"""
+)
 
-# Tokenization function
-def tokenize_no_stopwords(line):
-    # Check if the input is a string, if not return an empty string
-    if not isinstance(line, str):
-        return ""
-    
-    tokens = word_tokenize(line)
-    tokens = [w.lower() for w in tokens if w.isalpha()]  # keep only words
-    tokens_no_stop = [w for w in tokens if w not in stop_words]
-    return " ".join(tokens_no_stop)
+# Sidebar: model / preprocessor upload
+st.sidebar.header("Model & Files")
+uploaded_model = st.sidebar.file_uploader("Upload trained model (.pkl or .joblib)", type=["pkl", "joblib"])
+uploaded_prep = st.sidebar.file_uploader("Upload preprocessor pipeline (optional) (.pkl/.joblib)", type=["pkl","joblib"])
+use_sample_files = st.sidebar.checkbox("Try to auto-load model/preprocessor from current directory", value=True)
 
-# Apply to dataset
-# First, fill NaN values with empty strings to avoid the float error
-mydata['name'] = mydata['name'].fillna("")
-mydata['final_name'] = mydata['name'].apply(tokenize_no_stopwords)
+MODEL = None
+PREPROCESSOR = None
+model_path_hint = "/workspace or current working directory"
 
-print(mydata[['name', 'final_name']].head())
+def load_from_bytesio(fobj):
+    # joblib.load accepts file-like objects for newer versions, but safer to write to temp file
+    import tempfile
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pkl") as tmp:
+        tmp.write(fobj.read())
+        tmp.flush()
+        tmp_path = tmp.name
+    obj = joblib.load(tmp_path)
+    try:
+        os.unlink(tmp_path)
+    except Exception:
+        pass
+    return obj
 
-# First, install the lightgbm package
+# Try uploads first
+if uploaded_model is not None:
+    try:
+        MODEL = load_from_bytesio(uploaded_model)
+        st.sidebar.success("Model loaded from upload.")
+    except Exception as e:
+        st.sidebar.error(f"Failed to load uploaded model: {e}")
 
-# Then run your original code
-from sklearn.feature_extraction.text import TfidfVectorizer
-from lightgbm import LGBMRegressor, LGBMClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, confusion_matrix, recall_score, f1_score, classification_report, mean_absolute_error, r2_score
-from imblearn.over_sampling import RandomOverSampler
+if uploaded_prep is not None:
+    try:
+        PREPROCESSOR = load_from_bytesio(uploaded_prep)
+        st.sidebar.success("Preprocessor loaded from upload.")
+    except Exception as e:
+        st.sidebar.error(f"Failed to load uploaded preprocessor: {e}")
 
-def classify_as_cheap_or_expensive(line):
-    if line > 300:
-        return 1
-    else:
-        return 0
-        
-mydata['target'] = mydata['price'].apply(classify_as_cheap_or_expensive)
-mydata['target'].value_counts()
-train, test = train_test_split(mydata, test_size=0.2, random_state=315, stratify=mydata['target'])
+# Try to auto-load from disk (useful when deploying container with files)
+if MODEL is None and use_sample_files:
+    candidates = [f for f in os.listdir('.') if f.lower().endswith(('.pkl','.joblib'))]
+    # Prefer commonly named files
+    pref_order = ["model.pkl","model_joblib.pkl","final_model.pkl","random_forest.pkl","xgboost.pkl","model.joblib","model.sav","model"] 
+    chosen = None
+    for p in pref_order:
+        if p in candidates:
+            chosen = p
+            break
+    if not chosen and candidates:
+        chosen = candidates[0]
+    if chosen:
+        try:
+            MODEL = joblib.load(chosen)
+            st.sidebar.success(f"Auto-loaded model: {chosen}")
+        except Exception as e:
+            st.sidebar.warning(f"Found candidate {chosen} but failed to load: {e}")
 
-X_train, y_train = train['final_name'], train['target']
-X_test, y_test = test['final_name'], test['target']
-vect = TfidfVectorizer()
-X_train = vect.fit_transform(X_train)
-X_test = vect.transform(X_test)
-ros = RandomOverSampler(sampling_strategy='minority', random_state=1)
+if PREPROCESSOR is None and use_sample_files:
+    candidates = [f for f in os.listdir('.') if f.lower().startswith(('preproc','preprocessor','pipeline','prep')) and f.lower().endswith(('.pkl','.joblib'))]
+    if candidates:
+        try:
+            PREPROCESSOR = joblib.load(candidates[0])
+            st.sidebar.success(f"Auto-loaded preprocessor: {candidates[0]}")
+        except Exception as e:
+            st.sidebar.warning(f"Found candidate {candidates[0]} but failed to load: {e}")
 
-# Update this line - fit_sample is deprecated, use fit_resample instead
-X_train_ros, y_train_ros = ros.fit_resample(X_train, y_train)
+# Show model info if loaded
+if MODEL is not None:
+    st.subheader("Loaded model info")
+    try:
+        st.write(type(MODEL))
+        if hasattr(MODEL, "feature_names_in_"):
+            st.write("feature_names_in_:", getattr(MODEL, "feature_names_in_"))
+        if hasattr(MODEL, "get_params"):
+            st.write("Model params sample:", list(MODEL.get_params().keys())[:10])
+    except Exception:
+        pass
+else:
+    st.info("No model loaded yet. Upload a model on the left sidebar or place model files in the app directory and enable auto-load.")
 
-lr = LGBMClassifier(random_state=315)
-lr.fit(X_train_ros, y_train_ros)
-preds = lr.predict(X_test)
+# Prediction area: upload CSV or manual entry
+st.header("Make predictions")
+col1, col2 = st.columns([1,2])
 
-print(classification_report(y_test, preds))
-print("Accuracy: {0:.3f}".format(accuracy_score(y_test, preds)))
-print("Recall: {0:.3f}".format(recall_score(y_test, preds)))
+with col1:
+    uploaded_csv = st.file_uploader("Upload CSV for batch prediction (first row should be header with feature columns)", type=["csv"])
+    sample_mode = st.checkbox("Show sample input JSON (useful for manual predictions)", value=False)
+    if sample_mode:
+        st.write("Example JSON for a single row (modify keys to match your model's expected features):")
+        st.code(json.dumps({
+            "accommodates": 2,
+            "bedrooms": 1,
+            "bathrooms": 1,
+            "latitude": 40.7128,
+            "longitude": -74.0060,
+            "room_type": "Entire home/apt",
+            "neighbourhood": "Downtown"
+        }, indent=2))
 
-# Option 1: Drop only the columns that exist
-# First check if columns exist, then drop them
-columns_to_drop = []
-if 'target' in mydata.columns:
-    columns_to_drop.append('target')
-if 'clean_name' in mydata.columns:
-    columns_to_drop.append('clean_name')
-    
-if columns_to_drop:  # Only drop if there are columns to drop
-    mydata.drop(columns=columns_to_drop, inplace=True)
+with col2:
+    manual_json = st.text_area("Or paste a single-row JSON here (overrides manual form). Example: {\"accommodates\":2, \"bedrooms\":1}", height=120)
+    manual_predict_btn = st.button("Predict single sample from JSON")
 
-# Option 2: Alternative approach using list comprehension
-mydata.drop(columns=[col for col in ['target', 'clean_name'] if col in mydata.columns], 
-            inplace=True)
+def predict_df(df: pd.DataFrame):
+    if MODEL is None:
+        st.error("No model loaded — cannot predict. Please upload a model.")
+        return None
+    X = df.copy()
+    # If a preprocessor is provided, use it
+    try:
+        if PREPROCESSOR is not None:
+            Xp = PREPROCESSOR.transform(X)
+        else:
+            # If model has a column transformer stored as attribute, try to use it
+            if hasattr(MODEL, "named_steps") and "preprocessor" in MODEL.named_steps:
+                Xp = MODEL.named_steps["preprocessor"].transform(X)
+            else:
+                # attempt to align dataframe columns to what model expects
+                if hasattr(MODEL, "feature_names_in_"):
+                    needed = list(MODEL.feature_names_in_)
+                    missing = [c for c in needed if c not in X.columns]
+                    if missing:
+                        st.warning(f"Input is missing columns expected by model: {missing}. Predictions may fail.")
+                    Xp = X[ [c for c in needed if c in X.columns] ]
+                else:
+                    Xp = X
+        preds = MODEL.predict(Xp)
+        return preds
+    except Exception as e:
+        st.error(f"Prediction failed: {e}")
+        return None
 
-mydata.head()
+# Handle CSV upload
+if uploaded_csv is not None:
+    try:
+        df = pd.read_csv(uploaded_csv)
+        st.write("Uploaded data (first 10 rows):")
+        st.dataframe(df.head(10))
+        if st.button("Run batch prediction on uploaded CSV"):
+            preds = predict_df(df)
+            if preds is not None:
+                df_out = df.copy()
+                df_out["predicted_price"] = preds
+                st.success("Prediction completed. Preview:")
+                st.dataframe(df_out.head(20))
+                # provide download
+                csv_bytes = df_out.to_csv(index=False).encode('utf-8')
+                st.download_button("Download predictions as CSV", data=csv_bytes, file_name="predictions.csv", mime="text/csv")
+    except Exception as e:
+        st.error(f"Failed to read CSV: {e}")
 
-from sklearn.preprocessing import LabelEncoder
-le = LabelEncoder()                                            # Fit label encoder
-le.fit(mydata['neighbourhood_group'])
-mydata['neighbourhood_group']=le.transform(mydata['neighbourhood_group'])    # Transform labels to normalized encoding.
+# Handle manual JSON single prediction
+if manual_predict_btn:
+    try:
+        input_obj = json.loads(manual_json)
+        df_single = pd.DataFrame([input_obj])
+        st.write("Single input parsed:")
+        st.dataframe(df_single)
+        preds = predict_df(df_single)
+        if preds is not None:
+            st.success(f"Predicted price: {float(preds[0]):.2f}")
+    except Exception as e:
+        st.error(f"Failed to parse JSON or predict: {e}")
 
-le = LabelEncoder()
-le.fit(mydata['neighbourhood'])
-mydata['neighbourhood']=le.transform(mydata['neighbourhood'])
+# If no JSON provided, allow a simple manual quick form for some common features
+if not manual_json:
+    st.markdown("### Quick manual input (simple form) — fill in the fields below for a basic single prediction")
+    with st.form("quick_form"):
+        accommodates = st.number_input("accommodates", min_value=1, max_value=16, value=2)
+        bedrooms = st.number_input("bedrooms", min_value=0, max_value=10, value=1)
+        bathrooms = st.number_input("bathrooms", min_value=0.0, max_value=10.0, value=1.0, step=0.5)
+        room_type = st.selectbox("room_type (if applicable)", options=["Entire home/apt","Private room","Shared room","Hotel room"])
+        neighbourhood = st.text_input("neighbourhood (optional free text)", value="")
+        submit_quick = st.form_submit_button("Predict (quick form)")
+        if submit_quick:
+            entry = {
+                "accommodates": accommodates,
+                "bedrooms": bedrooms,
+                "bathrooms": bathrooms,
+                "room_type": room_type,
+                "neighbourhood": neighbourhood
+            }
+            df_single = pd.DataFrame([entry])
+            st.write("Input:")
+            st.dataframe(df_single)
+            preds = predict_df(df_single)
+            if preds is not None:
+                st.success(f"Predicted price: {float(preds[0]):.2f}")
 
-le =LabelEncoder()
-le.fit(mydata['room_type'])
-mydata['room_type']=le.transform(mydata['room_type'])
-
-
-mydata.head()
-
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_squared_error
-from sklearn import metrics
-from sklearn.metrics import r2_score
-from sklearn.model_selection import train_test_split  # Added missing import
-from sklearn.impute import SimpleImputer  # Added for handling NaN values
-import numpy as np  # Added missing import
-
-lm = LinearRegression()
-mydata = mydata[mydata.price > 0]
-mydata = mydata[mydata.availability_365 > 0]
-
-X = mydata[['neighbourhood_group', 'neighbourhood', 'room_type', 'minimum_nights', 'number_of_reviews', 'reviews_per_month', 'calculated_host_listings_count', 'availability_365']]
-
-# Handle categorical variables - convert to numeric using one-hot encoding
-X = pd.get_dummies(X, drop_first=True)  # Assuming pandas is imported as pd
-
-# Handle missing values using SimpleImputer
-imputer = SimpleImputer(strategy='mean')  # You can choose 'mean', 'median', 'most_frequent', or 'constant'
-X = imputer.fit_transform(X)
-
-# Prices are not normally distributed as well as there is alot of noise
-y = np.log10(mydata['price'])
-
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=101)
-
-lm.fit(X_train, y_train)
-from sklearn.metrics import mean_absolute_error
-y_predicts = lm.predict(X_test)
-
-print("""
-        Mean Squared Error: {}
-        R2 Score: {}
-        Mean Absolute Error: {}
-     """.format(
-        np.sqrt(metrics.mean_squared_error(y_test, y_predicts)),
-        r2_score(y_test, y_predicts) * 100,
-        mean_absolute_error(y_test, y_predicts)
-        ))
-
-
-from sklearn.tree import DecisionTreeRegressor
-from sklearn.metrics import r2_score, mean_absolute_error
-import numpy as np
-from sklearn import metrics
-
-# Change 'mse' to 'squared_error' which is the new parameter name in newer scikit-learn versions
-Reg_tree = DecisionTreeRegressor(criterion='squared_error', max_depth=3, random_state=0)
-Reg_tree = Reg_tree.fit(X_train, y_train)
-
-y_predicts = Reg_tree.predict(X_test)
-print("median absolute deviation (MAD): ", np.mean(abs(np.multiply(np.array(y_test.T-y_predicts), np.array(1/y_test)))))
-print("""
-        Mean Squared Error: {}
-        R2 Score: {}
-        Mean Absolute Error: {}
-     """.format(
-        np.sqrt(metrics.mean_squared_error(y_test, y_predicts)),
-        r2_score(y_test, y_predicts) * 100,
-        mean_absolute_error(y_test, y_predicts)
-        ))
-
-mydata.head()
-
-# First, install the fuzzywuzzy package
-
-# Then import and use it
-from fuzzywuzzy import process
-
-def airbnb_finder(title):
-    all_titles = mydata['final_name'].tolist()
-    closest_match = process.extractOne(title, all_titles)
-    return closest_match[0]
-
-title = airbnb_finder('village')
-title
-
-
-
+st.markdown("---")
+st.caption("Notes: This app expects your model to be a scikit-learn compatible estimator saved with joblib or pickle. "
+           "If you used custom preprocessing, upload that pipeline as `preprocessor.pkl` or include it inside a sklearn Pipeline with the model.")
+st.caption("If you want, place your model files in the same directory as this app and enable auto-load (sidebar).")
