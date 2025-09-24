@@ -2,7 +2,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import joblib
+import joblib   # ✅ correct import
 import os
 import json
 import nltk
@@ -66,8 +66,7 @@ if uploaded_prep is not None:
 # Try to auto-load from disk (useful when deploying container with files)
 if MODEL is None and use_sample_files:
     candidates = [f for f in os.listdir('.') if f.lower().endswith(('.pkl','.joblib'))]
-    # Prefer commonly named files
-    pref_order = ["model.pkl","model_joblib.pkl","final_model.pkl","random_forest.pkl","xgboost.pkl","model.joblib","model.sav","model"] 
+    pref_order = ["model.pkl","final_model.pkl","random_forest.pkl","xgboost.pkl","model.joblib","model.sav"] 
     chosen = None
     for p in pref_order:
         if p in candidates:
@@ -125,7 +124,7 @@ with col1:
         }, indent=2))
 
 with col2:
-    manual_json = st.text_area("Or paste a single-row JSON here (overrides manual form). Example: {\"accommodates\":2, \"bedrooms\":1}", height=120)
+    manual_json = st.text_area("Or paste a single-row JSON here (overrides manual form). Example: {"accommodates":2, "bedrooms":1}", height=120)
     manual_predict_btn = st.button("Predict single sample from JSON")
 
 def predict_df(df: pd.DataFrame):
@@ -133,21 +132,18 @@ def predict_df(df: pd.DataFrame):
         st.error("No model loaded — cannot predict. Please upload a model.")
         return None
     X = df.copy()
-    # If a preprocessor is provided, use it
     try:
         if PREPROCESSOR is not None:
             Xp = PREPROCESSOR.transform(X)
         else:
-            # If model has a column transformer stored as attribute, try to use it
             if hasattr(MODEL, "named_steps") and "preprocessor" in MODEL.named_steps:
                 Xp = MODEL.named_steps["preprocessor"].transform(X)
             else:
-                # attempt to align dataframe columns to what model expects
                 if hasattr(MODEL, "feature_names_in_"):
                     needed = list(MODEL.feature_names_in_)
                     missing = [c for c in needed if c not in X.columns]
                     if missing:
-                        st.warning(f"Input is missing columns expected by model: {missing}. Predictions may fail.")
+                        st.warning(f"Missing columns expected by model: {missing}. Predictions may fail.")
                     Xp = X[ [c for c in needed if c in X.columns] ]
                 else:
                     Xp = X
@@ -157,7 +153,6 @@ def predict_df(df: pd.DataFrame):
         st.error(f"Prediction failed: {e}")
         return None
 
-# Handle CSV upload
 if uploaded_csv is not None:
     try:
         df = pd.read_csv(uploaded_csv)
@@ -170,13 +165,11 @@ if uploaded_csv is not None:
                 df_out["predicted_price"] = preds
                 st.success("Prediction completed. Preview:")
                 st.dataframe(df_out.head(20))
-                # provide download
                 csv_bytes = df_out.to_csv(index=False).encode('utf-8')
                 st.download_button("Download predictions as CSV", data=csv_bytes, file_name="predictions.csv", mime="text/csv")
     except Exception as e:
         st.error(f"Failed to read CSV: {e}")
 
-# Handle manual JSON single prediction
 if manual_predict_btn:
     try:
         input_obj = json.loads(manual_json)
@@ -189,15 +182,14 @@ if manual_predict_btn:
     except Exception as e:
         st.error(f"Failed to parse JSON or predict: {e}")
 
-# If no JSON provided, allow a simple manual quick form for some common features
 if not manual_json:
     st.markdown("### Quick manual input (simple form) — fill in the fields below for a basic single prediction")
     with st.form("quick_form"):
         accommodates = st.number_input("accommodates", min_value=1, max_value=16, value=2)
         bedrooms = st.number_input("bedrooms", min_value=0, max_value=10, value=1)
         bathrooms = st.number_input("bathrooms", min_value=0.0, max_value=10.0, value=1.0, step=0.5)
-        room_type = st.selectbox("room_type (if applicable)", options=["Entire home/apt","Private room","Shared room","Hotel room"])
-        neighbourhood = st.text_input("neighbourhood (optional free text)", value="")
+        room_type = st.selectbox("room_type", options=["Entire home/apt","Private room","Shared room","Hotel room"])
+        neighbourhood = st.text_input("neighbourhood", value="")
         submit_quick = st.form_submit_button("Predict (quick form)")
         if submit_quick:
             entry = {
