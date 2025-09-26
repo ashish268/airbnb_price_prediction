@@ -124,12 +124,12 @@ with col1:
         }, indent=2))
 
 with col2:
-   manual_json = st.text_area(
-    'Or paste a single-row JSON here (overrides manual form). Example: {"accommodates":2, "bedrooms":1}',
-    height=120
-)
-
+    manual_json = st.text_area(
+        'Or paste a single-row JSON here (overrides manual form). Example: {"accommodates":2, "bedrooms":1}',
+        height=120
+    )
     manual_predict_btn = st.button("Predict single sample from JSON")
+
 
 def predict_df(df: pd.DataFrame):
     if MODEL is None:
@@ -214,7 +214,4 @@ st.markdown("---")
 st.caption("Notes: This app expects your model to be a scikit-learn compatible estimator saved with joblib or pickle. "
            "If you used custom preprocessing, upload that pipeline as `preprocessor.pkl` or include it inside a sklearn Pipeline with the model.")
 st.caption("If you want, place your model files in the same directory as this app and enable auto-load (sidebar).")
-manual_json = st.text_area(
-    'Or paste a single-row JSON here (overrides manual form). Example: {"accommodates":2, "bedrooms":1}',
-    height=120
-)
+
