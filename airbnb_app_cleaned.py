@@ -1,8 +1,13 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
-import joblib   # ✅ correct import
+
+# ✅ Safe joblib import with fallback
+try:
+    import joblib
+except ImportError:
+    from sklearn.externals import joblib
+
 import os
 import json
 import nltk
@@ -130,7 +135,6 @@ with col2:
     )
     manual_predict_btn = st.button("Predict single sample from JSON")
 
-
 def predict_df(df: pd.DataFrame):
     if MODEL is None:
         st.error("No model loaded — cannot predict. Please upload a model.")
@@ -214,4 +218,3 @@ st.markdown("---")
 st.caption("Notes: This app expects your model to be a scikit-learn compatible estimator saved with joblib or pickle. "
            "If you used custom preprocessing, upload that pipeline as `preprocessor.pkl` or include it inside a sklearn Pipeline with the model.")
 st.caption("If you want, place your model files in the same directory as this app and enable auto-load (sidebar).")
-
