@@ -124,7 +124,11 @@ with col1:
         }, indent=2))
 
 with col2:
-    manual_json = st.text_area("Or paste a single-row JSON here (overrides manual form). Example: {"accommodates":2, "bedrooms":1}", height=120)
+   manual_json = st.text_area(
+    'Or paste a single-row JSON here (overrides manual form). Example: {"accommodates":2, "bedrooms":1}',
+    height=120
+)
+
     manual_predict_btn = st.button("Predict single sample from JSON")
 
 def predict_df(df: pd.DataFrame):
